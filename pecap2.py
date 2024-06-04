@@ -17,6 +17,11 @@ from streamlit_folium import folium_static
 import numpy as np
 from shapely.geometry import shape, Polygon
 from folium.plugins import MousePosition
+from streamlit_folium import st_folium
+
+
+
+
 # Function to establish and return a MySQL connection
 def get_db_connection():
     try:
@@ -359,6 +364,10 @@ if SELECT == '📅 View Tables':
     view_tables(mycursor)
 
 
+# Data Visualization Page
+if SELECT == "📊 Data Visualization":
+    st.title("Data Visualization")
+    
 # Connect to the database
 mydb = mysql.connector.connect(
     host="localhost",
@@ -369,75 +378,73 @@ mydb = mysql.connector.connect(
 mycursor = mydb.cursor()
 
 
-# Data Visualization Page
-if SELECT == "📊 Data Visualization":
-    st.title("Data Visualization")
+# Extended sample data for demonstration (You can replace this with your complete dataset)
+data = {
+    'States': ['West Bengal', 'Maharashtra', 'Karnataka', 'Telangana', 'Tamil Nadu', 'Delhi', 'Kerala', 'Gujarat', 'Rajasthan', 'Uttar Pradesh',
+               'Andhra Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Madhya Pradesh', 'Odisha'],
+    'Districts': ['Darjiling', 'Mumbai', 'Bengaluru', 'Hyderabad', 'Chennai', 'Delhi', 'Thiruvananthapuram', 'Ahmedabad', 'Jaipur', 'Lucknow',
+                  'Visakhapatnam', 'Guwahati', 'Patna', 'Raipur', 'Panaji', 'Gurugram', 'Shimla', 'Ranchi', 'Bhopal', 'Bhubaneswar'],
+    'Transaction_count': [18129044, 27348292, 34329434, 18293848, 27483928, 19837283, 12345678, 23456789, 34567890, 45678901,
+                          12345678, 87654321, 23456789, 34567890, 45678901, 56789012, 67890123, 78901234, 89012345, 90123456],
+    'Transaction_amount': [29277839174, 48293812038, 59381293747, 28392019384, 48392019383, 39831293747, 12345678901, 23456789012, 34567890123, 45678901234,
+                           12345678901, 98765432109, 23456789012, 34567890123, 45678901234, 56789012345, 67890123456, 78901234567, 89012345678, 90123456789],
+    'Latitude': [27.0360, 19.0760, 12.9716, 17.3850, 13.0827, 28.7041, 8.5241, 23.0225, 26.9124, 26.8467,
+                 17.6868, 26.1445, 25.5941, 21.2514, 15.4909, 28.4595, 31.1048, 23.3441, 23.2599, 20.2961],
+    'Longitude': [88.2627, 72.8777, 77.5946, 78.4867, 80.2707, 77.1025, 76.9366, 72.5714, 75.7873, 80.9462,
+                  83.2185, 91.7362, 85.1376, 81.6296, 73.8278, 77.0266, 77.1734, 85.3095, 77.4126, 85.8245]
+}
 
-    # Map Visualization
-    st.subheader("Map Visualization")
+df = pd.DataFrame(data)
 
-    # Fetch data from MySQL database
-    connection = get_db_connection()
-    if connection:
-        query = """
-        SELECT States, 
-               SUM(Transaction_count) AS TotalTransactionCount, 
-               SUM(Transaction_amount) AS TotalTransactionAmount
-        FROM Map_transaction
-        GROUP BY States
-        """
-        df_map_user = pd.read_sql(query, connection)
-        connection.close()
-        
-        st.subheader("Total Transaction Count and Total Transaction Amount State-wise")
-        st.dataframe(df_map_user)
-        
-       
 
-        # Display total transaction count and total transaction amount
-        total_transaction_count = df_map_user['TotalTransactionCount'].sum()
-        total_transaction_amount = df_map_user['TotalTransactionAmount'].sum()
+# Group data by state and district and calculate the total transaction count and amount
+grouped_df = df.groupby(['States', 'Districts', 'Latitude', 'Longitude'], as_index=False).sum()
 
-        st.write(f"Total Transaction Count: {total_transaction_count}")
-        st.write(f"Total Transaction Amount: {total_transaction_amount}")
+# Create a scatter map plot with Plotly Express
+fig = px.scatter_geo(grouped_df,
+                     lat='Latitude',
+                     lon='Longitude',
+                     color='States',
+                     hover_name='Districts',
+                     size='Transaction_count',
+                     title='PhonePe Transactions Across India',
+                     hover_data={
+                         'Transaction_count': True,
+                         'Transaction_amount': True,
+                         'Latitude': False,
+                         'Longitude': False
+                     })
 
-        # Fetch the GeoJSON data
-        geojson_url = "https://raw.githubusercontent.com/geohacker/india/master/state/india_telengana.geojson"
-        response = requests.get(geojson_url)
-        state_geojson = response.json()
+ # Customize the layout of the map to focus on India
+fig.update_layout(
+        geo=dict(
+            scope='asia',
+            projection_type='natural earth',
+            showland=True,
+            landcolor='purple',
+            subunitwidth=1,
+            countrywidth=1,
+            center=dict(lat=20.5937, lon=78.9629),
+            lonaxis_range=[68, 98],  # Longitude range for India
+            lataxis_range=[6, 37]    # Latitude range for India
+        ),
+        title_font_size=20
+    )
 
-        # Create Folium Map with a purple theme
-        m = folium.Map(location=[20.5937, 78.9629], zoom_start=5, tiles='cartodbpositron')
+# Display the map in Streamlit
+st.plotly_chart(fig)
 
-        # Add GeoJSON to the map
-        folium.GeoJson(state_geojson, name="geojson").add_to(m)
 
-        # Add data points using centroids with purple color
-        for feature in state_geojson['features']:
-            state_name = feature['properties'].get('st_nm') or feature['properties'].get('ST_NM')
-            if state_name in df_map_user['States'].values:
-                state_data = df_map_user[df_map_user['States'] == state_name].iloc[0]
-                total_transaction_count = state_data['TotalTransactionCount']
-                total_transaction_amount = state_data['TotalTransactionAmount']
+# Show the total transaction count and amount for each state and district
+st.header("Transaction Details")
+for index, row in grouped_df.iterrows():
+    st.write(f"**State**: {row['States']}")
+    st.write(f"**District**: {row['Districts']}")
+    st.write(f"**Transaction Count**: {row['Transaction_count']}")
+    st.write(f"**Transaction Amount**: ₹{row['Transaction_amount']}")
+    st.write("---")
 
-                centroid = shape(feature['geometry']).centroid
-                lat, lon = centroid.y, centroid.x
 
-                popup_text = f"State: {state_name}<br>" \
-                             f"Total Transaction Count: {total_transaction_count}<br>" \
-                             f"Total Transaction Amount: {total_transaction_amount}"
-                
-                folium.CircleMarker(
-                    location=[lat, lon],
-                    radius=5,
-                    popup=popup_text,
-                    color="#800080",  # Purple color
-                    fill=True,
-                    fill_color="#800080"  # Purple color
-                ).add_to(m)
-
-        # Display the map
-        folium_static(m)
     
 # Queries
 if SELECT == "❓ Queries":
